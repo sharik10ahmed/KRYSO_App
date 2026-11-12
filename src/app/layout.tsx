@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, Manrope } from "next/font/google";
+import { CapacitorBridge } from "@/components/capacitor-bridge";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -32,6 +33,13 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#09090b",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -40,6 +48,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`dark ${dmSans.variable} ${manrope.variable}`}>
       <body className="antialiased bg-background text-foreground selection:bg-primary selection:text-primary-foreground min-h-screen">
+        <CapacitorBridge />
         {children}
       </body>
     </html>

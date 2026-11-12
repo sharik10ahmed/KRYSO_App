@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kryso</string>
+    <string name="title_activity_main">Kryso</string>
+    <string name="package_name">com.kryso.academy</string>
+    <string name="custom_url_scheme">com.kryso.academy</string>
+</resources>
