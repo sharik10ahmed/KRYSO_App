@@ -7,7 +7,7 @@ import { useStored } from "@/lib/kryso-storage";
 import { formatImageUrl } from "@/lib/media-utils";
 import { siteSettings } from "@/data/catalog";
 
-const defaultHeroImage = "https://res.cloudinary.com/vc1jzmd4/image/upload/v1790597850/kryso/academy/course_djing.jpg";
+const defaultHeroImage = "https://res.cloudinary.com/gc7rsrzf/image/upload/v1790597850/kryso/academy/course_djing.jpg";
 
 export interface AcademySpotlightImage {
   id: string;
@@ -26,7 +26,7 @@ export interface AcademySpotlightImage {
 export const defaultAcademySpotlightImages: AcademySpotlightImage[] = [
   {
     id: "img-dj-console",
-    url: "https://res.cloudinary.com/vc1jzmd4/image/upload/v1792055980/kryso/page-images/upload_1792055980801_Monochrome_Music_Performance_Collage_png.png",
+    url: "https://res.cloudinary.com/gc7rsrzf/image/upload/v1792055980/kryso/page-images/upload_1792055980801_Monochrome_Music_Performance_Collage_png.png",
     alt: "Live Club Decks & Studio Mixer",
     caption: "Pioneer DJ Decks & Live Sound Mixing",
     tag: "PRO. DJ & MUSIC PRODUCTION",
@@ -38,7 +38,7 @@ export const defaultAcademySpotlightImages: AcademySpotlightImage[] = [
   },
   {
     id: "img-studio-prod",
-    url: "https://res.cloudinary.com/vc1jzmd4/image/upload/v1792056049/kryso/page-images/upload_1792056049219_Rim_Lit_Rapper_in_the_Studio_png.png",
+    url: "https://res.cloudinary.com/gc7rsrzf/image/upload/v1792056049/kryso/page-images/upload_1792056049219_Rim_Lit_Rapper_in_the_Studio_png.png",
     alt: "Music Studio & Audio Production",
     caption: "Acoustic Sanctuary & Studio Gear",
     tag: "AUDIO PRODUCTION & SOUND LAB",
