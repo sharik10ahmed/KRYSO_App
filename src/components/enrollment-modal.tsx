@@ -152,7 +152,7 @@ export function CourseEnrollmentModal({ course, onClose }: EnrollmentModalProps)
     const targetPrice = sellingPrice > 0 ? sellingPrice : 2000;
 
     let orderId: string | undefined = undefined;
-    let effectiveKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_T7ub9uRXOT69Du";
+    let effectiveKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_T8G1UMUZmawitQ";
 
     try {
       // 1. Create order on server

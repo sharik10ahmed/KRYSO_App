@@ -114,18 +114,22 @@ export async function POST(req: NextRequest) {
 
     // 2. Send Admission Confirmation & Tax Invoice Email via Nodemailer
     let emailSent = false;
-    const emailUser = process.env.EMAIL_USER;
-    const emailPass = process.env.EMAIL_PASSWORD;
+    const emailUser = process.env.EMAIL_HOST_USER || process.env.EMAIL_USER;
+    const emailPass = process.env.EMAIL_HOST_PASSWORD || process.env.EMAIL_PASSWORD;
     const emailHost = process.env.EMAIL_HOST || "smtp.gmail.com";
     const emailPort = Number(process.env.EMAIL_PORT) || 587;
     const emailFrom = process.env.EMAIL_FROM || `"Kryso Music Academy" <${emailUser}>`;
+    const isSecure =
+      process.env.SMTP_SECURE === "true" ||
+      process.env.EMAIL_SECURE === "true" ||
+      emailPort === 465;
 
     if (emailUser && emailPass) {
       try {
         const transporter = nodemailer.createTransport({
           host: emailHost,
           port: emailPort,
-          secure: process.env.EMAIL_SECURE === "true" || emailPort === 465,
+          secure: isSecure,
           auth: {
             user: emailUser,
             pass: emailPass,
