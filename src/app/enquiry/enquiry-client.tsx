@@ -1,0 +1,330 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { CheckCircle2, GraduationCap, ArrowRight, Loader2, Sparkles, BookOpen } from "lucide-react";
+import heroImage from "@/assets/kryso-hero.jpg";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { SiteShell, SectionHeading } from "@/components/kryso-site";
+import { saveEnquiry, useStored } from "@/lib/kryso-storage";
+import { siteSettings } from "@/data/catalog";
+
+export function EnquiryClient() {
+  const [settings, setSettings] = useStored("admin-settings", siteSettings);
+  const [courses, setCourses] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("admin-courses-v3");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            return parsed
+              .map((c: { name?: string }) => c.name?.trim())
+              .filter((n: string | undefined): n is string => Boolean(n));
+          }
+        }
+      } catch {}
+    }
+    return [];
+  });
+  const [selectedCourse, setSelectedCourse] = useState("");
+  const [courseError, setCourseError] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/collections?name=site_settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.items && Array.isArray(data.items) && data.items.length > 0) {
+          const remote =
+            data.items.find((item: { id?: string }) => item.id === "contact_info" || item.id === "site_config") ||
+            data.items[0];
+          if (remote) {
+            setSettings((prev) => ({ ...prev, ...remote }));
+          }
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/collections?name=academy_courses")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.items && Array.isArray(data.items) && data.items.length > 0) {
+          const names = data.items
+            .map((c: { name?: string }) => c.name?.trim())
+            .filter((n: string | undefined): n is string => Boolean(n));
+          if (names.length > 0) {
+            setCourses(Array.from(new Set(names)));
+          }
+        }
+      })
+      .catch(() => {});
+  }, [setSettings]);
+
+  return (
+    <SiteShell>
+      <section className="relative isolate overflow-hidden bg-background text-foreground border-b border-border">
+        <Image
+          src={heroImage}
+          alt="Academy studio"
+          fill
+          priority
+          sizes="100vw"
+          className="absolute inset-0 -z-20 object-cover object-[center_25%] opacity-35 brightness-75 contrast-125"
+        />
+        <div className="absolute inset-0 -z-10 bg-linear-to-r from-background via-secondary/90 to-background/60" />
+        <div className="page-shell py-10 sm:py-16 md:py-20">
+          <p className="eyebrow">{settings.enquiryHeroEyebrow || "Admissions & Auditions"}</p>
+          <h1 className="mt-2 sm:mt-3 font-display text-3xl sm:text-4xl md:text-5xl font-extrabold text-foreground">
+            {settings.enquiryHeroTitle ? (
+              settings.enquiryHeroTitle.includes(" ") ? (
+                <>
+                  {settings.enquiryHeroTitle.split(" ").slice(0, -1).join(" ")}{" "}
+                  <span className="text-primary drop-shadow-[0_0_20px_rgba(245,158,11,0.35)]">
+                    {settings.enquiryHeroTitle.split(" ").slice(-1)[0]}
+                  </span>
+                </>
+              ) : (
+                <span className="text-primary drop-shadow-[0_0_20px_rgba(245,158,11,0.35)]">
+                  {settings.enquiryHeroTitle}
+                </span>
+              )
+            ) : (
+              <>
+                Course <span className="text-primary drop-shadow-[0_0_20px_rgba(245,158,11,0.35)]">Enquiry</span>
+              </>
+            )}
+          </h1>
+          <p className="mt-3 sm:mt-4 max-w-xl text-xs sm:text-sm md:text-base leading-relaxed text-muted-foreground">
+            {settings.enquiryHeroSubtitle || "Select your discipline of interest and take your first step toward musical mastery with Kryso Academy Pune."}
+          </p>
+        </div>
+      </section>
+
+      <section className="page-shell section-space grid gap-8 lg:gap-12 lg:grid-cols-[.9fr_1.1fr]">
+        <div>
+          <SectionHeading
+            label={settings.enquiryWhyLabel || "Why Learn With Us"}
+            title={settings.enquiryWhyTitle || "Concert-grade training for beginners and performers."}
+          />
+
+          <div className="mt-6 sm:mt-8 space-y-3 sm:space-y-4">
+            <div className="flex gap-3 sm:gap-4 rounded-xl border border-border bg-card/60 p-3.5 sm:p-4">
+              <span className="grid size-9 sm:size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <GraduationCap size={18} />
+              </span>
+              <div>
+                <p className="font-bold text-foreground text-sm sm:text-base">{settings.enquiryWhyDesc1Title || "1-on-1 & Small Group Coaching"}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
+                  {settings.enquiryWhyDesc1Text || "Individual attention from active stage artists and conservatory educators."}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 sm:gap-4 rounded-xl border border-border bg-card/60 p-3.5 sm:p-4">
+              <span className="grid size-9 sm:size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <Sparkles size={18} />
+              </span>
+              <div>
+                <p className="font-bold text-foreground text-sm sm:text-base">{settings.enquiryWhyDesc2Title || "Live Stage & Jam Experience"}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
+                  {settings.enquiryWhyDesc2Text || "Real stage concerts, acoustic jams, and audio recording showcases."}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 sm:gap-4 rounded-xl border border-border bg-card/60 p-3.5 sm:p-4">
+              <span className="grid size-9 sm:size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <BookOpen size={18} />
+              </span>
+              <div>
+                <p className="font-bold text-foreground text-sm sm:text-base">{settings.enquiryWhyDesc3Title || "Flexible Schedules & Certification"}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1">
+                  {settings.enquiryWhyDesc3Text || "Weekend and weekday morning/evening schedules tailored to school and working professionals."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 sm:mt-8 p-4 sm:p-5 rounded-xl border border-primary/20 bg-primary/5">
+            <p className="text-xs font-bold uppercase tracking-wider text-primary">Explore All Classes</p>
+            <p className="mt-1 text-xs sm:text-sm text-foreground">Want to browse the detailed syllabus and fee breakdown?</p>
+            <Link
+              href="/academy"
+              className="mt-2.5 sm:mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
+            >
+              View Academy Curriculum <ArrowRight size={14} />
+            </Link>
+          </div>
+        </div>
+
+        {/* Course Enquiry Form */}
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-8 lg:p-9 shadow-xl">
+          <p className="eyebrow">Student Registration</p>
+          <h2 className="mt-1.5 sm:mt-2 font-display text-xl sm:text-2xl font-extrabold text-foreground">Book Your Free Trial / Audition</h2>
+          <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
+            Please select the course you are interested in. A course selection is mandatory.
+          </p>
+
+          {sent ? (
+            <div className="mt-8 grid justify-items-center bg-secondary/80 border border-primary/30 rounded-xl p-8 text-center">
+              <div className="grid size-12 place-items-center rounded-full bg-primary/20 text-primary">
+                <CheckCircle2 size={30} />
+              </div>
+              <p className="mt-4 font-display text-xl font-bold text-foreground">Enquiry Submitted!</p>
+              <p className="mt-2 text-sm text-foreground">
+                We have received your enquiry for:
+              </p>
+              <div className="mt-2 inline-block rounded-full bg-primary/15 border border-primary/40 px-4 py-1.5 text-sm font-extrabold text-primary">
+                🎵 {selectedCourse}
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground max-w-sm">
+                Our faculty coordinator will call you to schedule your studio visit or introductory trial class.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-6 rounded-full border-border hover:bg-primary hover:text-primary-foreground"
+                onClick={() => {
+                  setSent(false);
+                  setSelectedCourse("");
+                }}
+              >
+                Submit Another Course Enquiry
+              </Button>
+            </div>
+          ) : (
+            <form
+              className="mt-6 grid gap-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!selectedCourse || selectedCourse.trim() === "") {
+                  setCourseError(true);
+                  return;
+                }
+
+                setSubmitting(true);
+                const data = new FormData(e.currentTarget);
+                const name = String(data.get("name") ?? "").trim();
+                const phone = String(data.get("phone") ?? "").trim();
+                const email = String(data.get("email") ?? "").trim();
+                const message = String(data.get("message") ?? "").trim();
+
+                saveEnquiry({
+                  kind: "course",
+                  name,
+                  phone,
+                  email,
+                  course: selectedCourse.trim(),
+                  message,
+                });
+
+                setSubmitting(false);
+                setSent(true);
+              }}
+            >
+              {/* Mandatory Course Dropdown */}
+              <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+                <span className="flex items-center justify-between">
+                  <span>
+                    Select Course <span className="text-primary">*</span>
+                  </span>
+                  {courseError && (
+                    <span className="text-xs font-semibold text-destructive animate-pulse">
+                      * Please select a course
+                    </span>
+                  )}
+                </span>
+                <select
+                  required
+                  value={selectedCourse}
+                  onChange={(e) => {
+                    setSelectedCourse(e.target.value);
+                    if (e.target.value) setCourseError(false);
+                  }}
+                  className={`h-11 rounded-lg border bg-background px-3 font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary ${
+                    courseError ? "border-destructive ring-1 ring-destructive" : "border-border"
+                  }`}
+                >
+                  <option value="" disabled className="bg-background text-muted-foreground font-normal">
+                    -- Choose a course (Required) * --
+                  </option>
+                  {courses.map((c) => (
+                    <option key={c} value={c} className="bg-background text-foreground font-semibold">
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  User must select a course before submitting.
+                </p>
+              </label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+                  Your Full Name <span className="text-primary">*</span>
+                  <Input
+                    name="name"
+                    required
+                    placeholder="Enter your name"
+                    className="bg-background border-border text-foreground focus-visible:ring-primary"
+                  />
+                </label>
+
+                <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+                  Phone Number <span className="text-primary">*</span>
+                  <Input
+                    name="phone"
+                    required
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    className="bg-background border-border text-foreground focus-visible:ring-primary"
+                  />
+                </label>
+              </div>
+
+              <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+                Email Address
+                <Input
+                  name="email"
+                  type="email"
+                  placeholder="you@example.com (optional)"
+                  className="bg-background border-border text-foreground focus-visible:ring-primary"
+                />
+              </label>
+
+              <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+                Your Goals / Musical Background
+                <Textarea
+                  name="message"
+                  rows={3}
+                  placeholder="Are you a beginner or have some experience? Which class timing suits you?"
+                  className="bg-background border-border text-foreground focus-visible:ring-primary"
+                />
+              </label>
+
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="h-11 rounded-full font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 mt-2"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin mr-2" /> Submitting...
+                  </>
+                ) : (
+                  <>
+                    Confirm Course Enquiry <ArrowRight size={16} className="ml-1.5" />
+                  </>
+                )}
+              </Button>
+            </form>
+          )}
+        </div>
+      </section>
+    </SiteShell>
+  );
+}
