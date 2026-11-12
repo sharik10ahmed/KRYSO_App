@@ -1,4 +1,4 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
 import { DM_Sans, Manrope } from "next/font/google";
 import "./globals.css";
 
@@ -14,23 +14,10 @@ const manrope = Manrope({
   weight: ["400", "500", "600", "700", "800"],
 });
 
-export const viewport: Viewport = {
-  themeColor: "#0B0F17",
-  width: "device-width",
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-};
-
 export const metadata: Metadata = {
   title: "Kryso Music Academy — Learn Music & Live Concerts",
   description: "Concert sound, music lessons and instruments in Pune, Maharashtra.",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Kryso",
-  },
+  authors: [{ name: "Lovable" }],
   openGraph: {
     title: "Kryso Music Academy",
     description: "Learn music and enjoy concerts in Pune.",
@@ -38,10 +25,10 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    site: "@Lovable",
   },
   icons: {
     icon: "/favicon.ico",
-    apple: "/icons/apple-touch-icon.png",
   },
 };
 

@@ -12,13 +12,8 @@ export async function POST(req: NextRequest) {
       courseName,
     } = body;
 
-    const keyId =
-      process.env.RAZORPAY_API_KEY ||
-      process.env.RAZORPAY_KEY_ID ||
-      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
-      "";
-    const keySecret =
-      process.env.RAZORPAY_API_SECRET || process.env.RAZORPAY_KEY_SECRET || "";
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "";
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || "";
 
     const numAmount = Number(amount) || 0;
     if (numAmount <= 0) {
