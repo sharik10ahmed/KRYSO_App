@@ -97,10 +97,10 @@ function TrackItemCard({
       <div>
         {/* Cover Artwork */}
         <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-border/80 bg-secondary shadow-inner group/art">
-          {track.imageUrl ? (
+          {track.imageUrl && formatImageUrl(track.imageUrl) ? (
             <Image
               src={formatImageUrl(track.imageUrl)}
-              alt={track.name}
+              alt={track.name || "Music Artwork"}
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
               className={`object-cover transition-transform duration-300 ${
@@ -294,12 +294,12 @@ function TrackItemCard({
         <div className="mt-2.5">
           <h3
             className="font-display text-sm sm:text-base font-bold text-foreground group-hover:text-amber-400 transition-colors truncate"
-            title={track.name}
+            title={track.name || ""}
           >
-            {track.name}
+            {track.name || (track as unknown as { title?: string }).title || "Untitled Track"}
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground truncate">
-            Singer / Artist: <span className="font-medium text-foreground">{track.singer}</span>
+            Singer / Artist: <span className="font-medium text-foreground">{track.singer || (track as unknown as { artist?: string }).artist || "Kryso"}</span>
           </p>
         </div>
       </div>
@@ -372,20 +372,10 @@ export function MusicShopClient() {
     "admin-kryso-music-header",
     defaultMusicHeaderData
   );
-  const [trackList, setTrackList] = useState<MusicTrack[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored =
-          localStorage.getItem("kryso:admin-music-tracks-v1") ||
-          localStorage.getItem("admin-music-tracks-v1");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch {}
-    }
-    return defaultMusicTracks;
-  });
+  const [trackList, setTrackList] = useStored<MusicTrack[]>(
+    "admin-music-tracks-v1",
+    defaultMusicTracks
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [selectedGenre, setSelectedGenre] = useState("All");
@@ -579,7 +569,7 @@ export function MusicShopClient() {
       .catch(() => {});
   }, [setHeaderConfig]);
 
-  // Fetch dynamic music tracks from MongoDB (with cache-busting & newest-first sort)
+  // Fetch dynamic music tracks from MongoDB & auto-merge with local tracks
   useEffect(() => {
     fetch(`/api/collections?name=music_tracks&_t=${Date.now()}`, {
       cache: "no-store",
@@ -587,33 +577,51 @@ export function MusicShopClient() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
-          const sorted = [...(data.items as MusicTrack[])].sort((a, b) => {
-            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return timeB - timeA;
+        if (data.success && Array.isArray(data.items)) {
+          const remoteTracks = data.items as MusicTrack[];
+
+          setTrackList((currentTracks) => {
+            const list = Array.isArray(currentTracks) ? currentTracks : [];
+            const remoteMap = new Map(remoteTracks.map((t) => [t.id, t]));
+            // Keep all local tracks (even if not yet in DB) and merge with remote
+            const mergedLocal = list.map((loc) => remoteMap.get(loc.id) || loc);
+            const localIds = new Set(list.map((t) => t.id));
+            const remoteOnly = remoteTracks.filter((t) => !localIds.has(t.id));
+            const combined = [...mergedLocal, ...remoteOnly];
+            const finalList = combined.length > 0 ? combined : defaultMusicTracks;
+
+            return [...finalList].sort((a, b) => {
+              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return timeB - timeA;
+            });
           });
-          setTrackList(sorted);
-        } else {
+
+          // Sync any locally created track that isn't on the server yet
+          let localStored: MusicTrack[] = [];
           try {
-            const stored =
+            const raw =
               localStorage.getItem("kryso:admin-music-tracks-v1") ||
               localStorage.getItem("admin-music-tracks-v1");
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setTrackList(parsed);
-                return;
-              }
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) localStored = parsed;
             }
           } catch {}
-          setTrackList((prev) => (prev.length > 0 ? prev : defaultMusicTracks));
+
+          const remoteIds = new Set(remoteTracks.map((t) => t.id));
+          const unsynced = localStored.filter((t) => !remoteIds.has(t.id));
+          for (const unsyncedTrack of unsynced) {
+            fetch("/api/collections", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: "music_tracks", item: unsyncedTrack }),
+            }).catch(() => {});
+          }
         }
       })
-      .catch(() => {
-        setTrackList((prev) => (prev.length > 0 ? prev : defaultMusicTracks));
-      });
-  }, []);
+      .catch(() => {});
+  }, [setTrackList]);
 
   // Extract unique genres from available tracks
   const availableGenres = useMemo(() => {
@@ -645,14 +653,19 @@ export function MusicShopClient() {
   // Filtered tracks based on search, genre, and section
   const filteredTracks = useMemo(() => {
     return trackList.filter((track) => {
-      const queryLower = activeQuery.toLowerCase();
-      const matchesSearch =
-        !activeQuery ||
-        track.name.toLowerCase().includes(queryLower) ||
-        track.singer.toLowerCase().includes(queryLower) ||
-        (track.genre && track.genre.toLowerCase().includes(queryLower));
+      if (!track) return false;
+      const queryLower = (activeQuery || "").toLowerCase();
+      const trackName = (track.name || (track as unknown as { title?: string }).title || "").toString().toLowerCase();
+      const trackSinger = (track.singer || (track as unknown as { artist?: string }).artist || "").toString().toLowerCase();
+      const trackGenre = (track.genre || "").toString().toLowerCase();
 
-      const matchesGenre = selectedGenre === "All" || track.genre?.trim() === selectedGenre;
+      const matchesSearch =
+        !queryLower ||
+        trackName.includes(queryLower) ||
+        trackSinger.includes(queryLower) ||
+        trackGenre.includes(queryLower);
+
+      const matchesGenre = selectedGenre === "All" || (track.genre && track.genre.trim() === selectedGenre);
 
       const access = getTrackAccessType(track);
       let matchesSection = true;

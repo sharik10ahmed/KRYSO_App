@@ -43,20 +43,10 @@ const perks = [
 
 export function AcademyClient() {
   const [settings, setSettings] = useStored("admin-settings", siteSettings);
-  const [courseList, setCourseList] = useState<Course[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored =
-          localStorage.getItem("kryso:admin-courses-v3") ||
-          localStorage.getItem("admin-courses-v3");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch {}
-    }
-    return courses;
-  });
+  const [courseList, setCourseList] = useStored<Course[]>(
+    "admin-courses-v3",
+    courses
+  );
   const [detailCourse, setDetailCourse] = useState<Course | null>(null);
   const [enrollModalCourse, setEnrollModalCourse] = useState<Course | null>(null);
   const [testimonialList, setTestimonialList] = useState<{ name: string; course: string; text: string }[]>(testimonials);
@@ -86,31 +76,47 @@ export function AcademyClient() {
       })
       .catch(() => {});
 
-    // Fetch courses from MongoDB collection
+    // Fetch courses from MongoDB collection & auto-merge with local courses
     fetch("/api/collections?name=academy_courses")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
-          setCourseList(data.items);
-        } else {
+        if (data.success && Array.isArray(data.items)) {
+          const remoteCourses = data.items as Course[];
+
+          setCourseList((currentList) => {
+            const list = Array.isArray(currentList) ? currentList : [];
+            const remoteMap = new Map(remoteCourses.map((c) => [c.id, c]));
+            const mergedLocal = list.map((loc) => remoteMap.get(loc.id) || loc);
+            const localIds = new Set(list.map((c) => c.id));
+            const remoteOnly = remoteCourses.filter((c) => !localIds.has(c.id));
+            const combined = [...mergedLocal, ...remoteOnly];
+            return combined.length > 0 ? combined : courses;
+          });
+
+          // Sync any locally added course that isn't on the server yet
+          let localCourses: Course[] = [];
           try {
             const stored =
               localStorage.getItem("kryso:admin-courses-v3") ||
               localStorage.getItem("admin-courses-v3");
             if (stored) {
               const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setCourseList(parsed);
-                return;
-              }
+              if (Array.isArray(parsed)) localCourses = parsed;
             }
           } catch {}
-          setCourseList((prev) => (prev.length > 0 ? prev : courses));
+
+          const remoteIds = new Set(remoteCourses.map((c) => c.id));
+          const unsynced = localCourses.filter((c) => !remoteIds.has(c.id));
+          for (const unsyncedCourse of unsynced) {
+            fetch("/api/collections", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: "academy_courses", item: unsyncedCourse }),
+            }).catch(() => {});
+          }
         }
       })
-      .catch(() => {
-        setCourseList((prev) => (prev.length > 0 ? prev : courses));
-      })
+      .catch(() => {})
       .finally(() => setLoading(false));
 
     // Fetch testimonials

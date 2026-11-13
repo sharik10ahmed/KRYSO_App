@@ -5,7 +5,7 @@ const prefix = "kryso:";
 export function readStored<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   try {
-    const raw = window.localStorage.getItem(prefix + key);
+    const raw = window.localStorage.getItem(prefix + key) || window.localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
     return fallback;
@@ -15,7 +15,10 @@ export function readStored<T>(key: string, fallback: T): T {
 export function writeStored<T>(key: string, value: T) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(prefix + key, JSON.stringify(value));
+    const serialized = JSON.stringify(value);
+    window.localStorage.setItem(prefix + key, serialized);
+    window.localStorage.setItem(key, serialized);
+    window.dispatchEvent(new CustomEvent("kryso:storage-update", { detail: { key, value } }));
   } catch {
     /* storage unavailable in this browser */
   }
@@ -29,6 +32,26 @@ export function useStored<T>(key: string, seed: T) {
   useEffect(() => {
     setValue(readStored(key, seed));
     setLoaded(true);
+
+    const handleCustomUpdate = (e: Event) => {
+      const custom = e as CustomEvent<{ key?: string; value?: unknown }>;
+      if (custom.detail?.key === key) {
+        setValue(custom.detail.value as T);
+      }
+    };
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === prefix + key || e.key === key) {
+        setValue(readStored(key, seed));
+      }
+    };
+
+    window.addEventListener("kryso:storage-update", handleCustomUpdate);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener("kryso:storage-update", handleCustomUpdate);
+      window.removeEventListener("storage", handleStorage);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
