@@ -49,7 +49,7 @@ import {
 } from "@/data/catalog";
 import { formatImageUrl, formatAudioUrl } from "@/lib/media-utils";
 import { SpotifyIcon } from "@/components/spotify-icon";
-import { useStored } from "@/lib/kryso-storage";
+import { useStored, readStored } from "@/lib/kryso-storage";
 
 const ITEMS_PER_PAGE = 12;
 
@@ -569,8 +569,15 @@ export function MusicShopClient() {
       .catch(() => {});
   }, [setHeaderConfig]);
 
-  // Fetch dynamic music tracks from MongoDB & auto-merge with local tracks
+  // Fetch dynamic music tracks & auto-merge with local tracks
   useEffect(() => {
+    // 1. Immediately ensure trackList reflects any stored tracks from localStorage
+    const localOnMount = readStored<MusicTrack[]>("admin-music-tracks-v1", defaultMusicTracks);
+    if (Array.isArray(localOnMount) && localOnMount.length > 0) {
+      setTrackList(localOnMount);
+    }
+
+    // 2. Fetch remote tracks
     fetch(`/api/collections?name=music_tracks&_t=${Date.now()}`, {
       cache: "no-store",
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
@@ -580,42 +587,27 @@ export function MusicShopClient() {
         if (data.success && Array.isArray(data.items)) {
           const remoteTracks = data.items as MusicTrack[];
 
-          setTrackList((currentTracks) => {
-            const list = Array.isArray(currentTracks) ? currentTracks : [];
-            const remoteMap = new Map(remoteTracks.map((t) => [t.id, t]));
-            // Keep all local tracks (even if not yet in DB) and merge with remote
-            const mergedLocal = list.map((loc) => remoteMap.get(loc.id) || loc);
-            const localIds = new Set(list.map((t) => t.id));
-            const remoteOnly = remoteTracks.filter((t) => !localIds.has(t.id));
-            const combined = [...mergedLocal, ...remoteOnly];
-            const finalList = combined.length > 0 ? combined : defaultMusicTracks;
+          // Read the freshest array from localStorage
+          const localStored = readStored<MusicTrack[]>("admin-music-tracks-v1", defaultMusicTracks);
+          const trackMap = new Map<string, MusicTrack>();
+          defaultMusicTracks.forEach((t) => trackMap.set(t.id, t));
+          localStored.forEach((t) => trackMap.set(t.id, t));
+          remoteTracks.forEach((t) => trackMap.set(t.id, { ...trackMap.get(t.id), ...t }));
 
-            return [...finalList].sort((a, b) => {
-              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-              return timeB - timeA;
-            });
+          const merged = Array.from(trackMap.values()).sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeB - timeA;
           });
 
-          // Sync any locally created track that isn't on the server yet
-          let localStored: MusicTrack[] = [];
-          try {
-            const raw =
-              localStorage.getItem("kryso:admin-music-tracks-v1") ||
-              localStorage.getItem("admin-music-tracks-v1");
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) localStored = parsed;
-            }
-          } catch {}
+          setTrackList(merged);
 
-          const remoteIds = new Set(remoteTracks.map((t) => t.id));
-          const unsynced = localStored.filter((t) => !remoteIds.has(t.id));
-          for (const unsyncedTrack of unsynced) {
+          // If local has tracks not on server yet, push full list to server so server & app have them
+          if (localStored.length > remoteTracks.length) {
             fetch("/api/collections", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: "music_tracks", item: unsyncedTrack }),
+              body: JSON.stringify({ name: "music_tracks", items: merged }),
             }).catch(() => {});
           }
         }

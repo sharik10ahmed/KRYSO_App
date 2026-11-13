@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 import { ObjectId, type Filter, type Document } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { getCache, setCache, invalidateCollectionsCache } from "@/lib/redis";
@@ -50,6 +52,30 @@ const DEFAULT_COLLECTIONS: Record<string, Array<Record<string, unknown>>> = {
   kryso_techrider: [defaultKrysoTechriderData as unknown as Record<string, unknown>],
 };
 
+const DATA_FALLBACK_FILE = path.join(process.cwd(), "src", "data", "collections-fallback.json");
+
+function loadDiskFallback(): Record<string, Array<Record<string, unknown>>> {
+  try {
+    if (fs.existsSync(DATA_FALLBACK_FILE)) {
+      const content = fs.readFileSync(DATA_FALLBACK_FILE, "utf-8");
+      return JSON.parse(content);
+    }
+  } catch (e) {
+    console.warn("Could not read collections-fallback.json:", e);
+  }
+  return {};
+}
+
+function saveDiskFallback(name: string, items: Array<Record<string, unknown>>) {
+  try {
+    const existing = loadDiskFallback();
+    existing[name] = items;
+    fs.writeFileSync(DATA_FALLBACK_FILE, JSON.stringify(existing, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Could not persist collections-fallback.json:", e);
+  }
+}
+
 interface GlobalFallback {
   _krysoFallbackStore?: Record<string, Array<Record<string, unknown>>>;
 }
@@ -60,7 +86,12 @@ if (!globalFallback._krysoFallbackStore) {
 const fallbackStore = globalFallback._krysoFallbackStore;
 
 function getFallbackItems(name: string): Array<Record<string, unknown>> {
-  if (fallbackStore[name] && Array.isArray(fallbackStore[name])) {
+  if (fallbackStore[name] && Array.isArray(fallbackStore[name]) && fallbackStore[name].length > 0) {
+    return fallbackStore[name];
+  }
+  const diskData = loadDiskFallback();
+  if (diskData[name] && Array.isArray(diskData[name]) && diskData[name].length > 0) {
+    fallbackStore[name] = diskData[name];
     return fallbackStore[name];
   }
   const defaultItems = DEFAULT_COLLECTIONS[name];
@@ -248,7 +279,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Always update in-memory fallback store so server immediately reflects the changes
+    // Always update in-memory fallback store and disk storage so server immediately reflects the changes
     if (Array.isArray(items)) {
       fallbackStore[name] = items.map((it) => ({ ...it }));
     } else if (item && item.id) {
@@ -260,6 +291,9 @@ export async function POST(req: NextRequest) {
         current.unshift({ ...item });
       }
       fallbackStore[name] = current;
+    }
+    if (fallbackStore[name]) {
+      saveDiskFallback(name, fallbackStore[name]);
     }
 
     const db = await getDb();
@@ -341,7 +375,7 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Always update in-memory fallback store
+    // Always update in-memory fallback store and disk fallback
     if (id === "ALL") {
       fallbackStore[name] = [];
     } else if (id) {
@@ -352,6 +386,9 @@ export async function DELETE(req: NextRequest) {
           String(it.invoiceNumber) !== String(id) &&
           String(it.paymentId) !== String(id)
       );
+    }
+    if (fallbackStore[name]) {
+      saveDiskFallback(name, fallbackStore[name]);
     }
 
     const db = await getDb();

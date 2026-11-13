@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useStored } from "@/lib/kryso-storage";
+import { useStored, readStored } from "@/lib/kryso-storage";
 import { formatImageUrl } from "@/lib/media-utils";
 
 export type FieldDef = {
@@ -123,19 +123,48 @@ export function CollectionManager({
     let isMounted = true;
     setSyncing(true);
 
-    fetch(`/api/collections?name=${apiCollection}`)
+    // Initial sync: push any locally saved rows to the server
+    const localAtMount = readStored<Row[]>(storageKey, seed);
+    if (Array.isArray(localAtMount) && localAtMount.length > 0) {
+      fetch("/api/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: apiCollection, items: localAtMount }),
+      }).catch(() => {});
+    }
+
+    fetch(`/api/collections?name=${apiCollection}&_t=${Date.now()}`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    })
       .then((res) => res.json())
       .then((data) => {
         if (!isMounted) return;
         const isDbOnline = data.source === "mongodb" || data.source === "redis-cache";
-        if (data.success && isDbOnline) {
-          setMongoConnected(true);
-          if (Array.isArray(data.items)) {
-            setRows(data.items as Row[]);
-          }
-        } else if (data.success && Array.isArray(data.items) && data.items.length > 0) {
-          setMongoConnected(false);
-          setRows(data.items as Row[]);
+        if (data.success && isDbOnline) setMongoConnected(true);
+
+        if (data.success && Array.isArray(data.items)) {
+          const remoteItems = data.items as Row[];
+          setRows((prevRows) => {
+            const currentList =
+              Array.isArray(prevRows) && prevRows.length > 0
+                ? prevRows
+                : readStored<Row[]>(storageKey, seed);
+            const rowMap = new Map<string, Row>();
+            seed.forEach((s) => rowMap.set(String(s.id), s));
+            currentList.forEach((s) => rowMap.set(String(s.id), s));
+            remoteItems.forEach((s) => rowMap.set(String(s.id), { ...rowMap.get(String(s.id)), ...s }));
+            const merged = Array.from(rowMap.values());
+
+            if (currentList.length > remoteItems.length) {
+              fetch("/api/collections", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: apiCollection, items: merged }),
+              }).catch(() => {});
+            }
+            return merged;
+          });
         } else {
           setMongoConnected(false);
         }
@@ -151,7 +180,7 @@ export function CollectionManager({
     return () => {
       isMounted = false;
     };
-  }, [apiCollection, setRows]);
+  }, [apiCollection, storageKey, seed, setRows]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
@@ -236,14 +265,14 @@ export function CollectionManager({
         const res = await fetch("/api/collections", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: apiCollection, item: cleanRow }),
+          body: JSON.stringify({ name: apiCollection, items: updated }),
         });
         const data = await res.json();
         if (data.savedTo === "mongodb") {
           setMongoConnected(true);
           setSaveStatus("Saved to database & live site!");
         } else {
-          setSaveStatus("Saved locally in cache");
+          setSaveStatus("Saved locally in cache & server");
         }
       } catch (err) {
         console.warn("Failed to persist to MongoDB:", err);
@@ -262,12 +291,17 @@ export function CollectionManager({
       return;
     }
 
-    // Optimistic local state update
-    setRows((current) => current.filter((item) => item.id !== id));
+    const remaining = rows.filter((item) => item.id !== id);
+    setRows(remaining);
     setSaveStatus("Deleting entry...");
 
     if (apiCollection) {
       try {
+        await fetch("/api/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: apiCollection, items: remaining }),
+        });
         const res = await fetch(`/api/collections?name=${apiCollection}&id=${encodeURIComponent(id)}`, {
           method: "DELETE",
         });
@@ -278,7 +312,7 @@ export function CollectionManager({
           setSaveStatus("Deleted locally.");
         }
       } catch (err) {
-        console.warn("Failed to delete from MongoDB:", err);
+        console.warn("Failed to delete from server:", err);
         setSaveStatus("Deleted locally.");
       }
     } else {

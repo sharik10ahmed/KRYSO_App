@@ -47,7 +47,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useStored } from "@/lib/kryso-storage";
+import { useStored, readStored } from "@/lib/kryso-storage";
 import {
   siteSettings,
   defaultMusicHeaderData,
@@ -196,10 +196,20 @@ export function MusicTrackManager() {
       .catch(() => {});
   }, [setHeaderConfig]);
 
-  // Sync tracks from MongoDB on mount (with cache-busting & newest-first sorting)
+  // Sync tracks on mount (with cache-busting, local preservation & newest-first sorting)
   useEffect(() => {
     let isMounted = true;
     setSyncing(true);
+
+    // Initial sync: if browser has tracks in localStorage, send them to server immediately
+    const localAtMount = readStored<MusicTrack[]>(STORAGE_KEY, defaultMusicTracks);
+    if (Array.isArray(localAtMount) && localAtMount.length > 0) {
+      fetch("/api/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: COLLECTION_NAME, items: localAtMount }),
+      }).catch(() => {});
+    }
 
     fetch(`/api/collections?name=${COLLECTION_NAME}&_t=${Date.now()}`, {
       cache: "no-store",
@@ -219,11 +229,31 @@ export function MusicTrackManager() {
             return timeB - timeA;
           });
 
-          // Preserve any local track that might still be syncing
+          // Robust merge: combine remote tracks and local tracks
           setTracks((prevTracks) => {
-            const remoteIds = new Set(sorted.map((t) => t.id));
-            const unsyncedLocal = prevTracks.filter((t) => !remoteIds.has(t.id));
-            return [...unsyncedLocal, ...sorted];
+            const currentList =
+              Array.isArray(prevTracks) && prevTracks.length > 0
+                ? prevTracks
+                : readStored<MusicTrack[]>(STORAGE_KEY, defaultMusicTracks);
+            const trackMap = new Map<string, MusicTrack>();
+            defaultMusicTracks.forEach((t) => trackMap.set(t.id, t));
+            currentList.forEach((t) => trackMap.set(t.id, t));
+            sorted.forEach((t) => trackMap.set(t.id, { ...trackMap.get(t.id), ...t }));
+            const merged = Array.from(trackMap.values()).sort((a, b) => {
+              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return timeB - timeA;
+            });
+
+            // If we have tracks that server didn't have, push full list to server
+            if (currentList.length > sorted.length) {
+              fetch("/api/collections", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: COLLECTION_NAME, items: merged }),
+              }).catch(() => {});
+            }
+            return merged;
           });
         } else {
           setMongoConnected(false);
@@ -296,14 +326,14 @@ export function MusicTrackManager() {
       const res = await fetch("/api/collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: COLLECTION_NAME, item: cleanTrack }),
+        body: JSON.stringify({ name: COLLECTION_NAME, items: updated }),
       });
       const data = await res.json();
       if (data.savedTo === "mongodb") {
         setMongoConnected(true);
         setStatusMsg("Track saved to database!");
       } else {
-        setStatusMsg("Track saved in local storage.");
+        setStatusMsg("Track saved to local storage & server.");
       }
     } catch {
       setStatusMsg("Track saved in local storage (offline).");
@@ -329,7 +359,7 @@ export function MusicTrackManager() {
       await fetch("/api/collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: COLLECTION_NAME, item: updatedTrack }),
+        body: JSON.stringify({ name: COLLECTION_NAME, items: updatedList }),
       });
       setStatusMsg(
         next === "free"
@@ -356,7 +386,7 @@ export function MusicTrackManager() {
       await fetch("/api/collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: COLLECTION_NAME, item: updatedTrack }),
+        body: JSON.stringify({ name: COLLECTION_NAME, items: updatedList }),
       });
       setStatusMsg(`Track ${updatedTrack.isLocked ? "Locked 🔒" : "Unlocked 🔓"}`);
     } catch {
@@ -376,7 +406,7 @@ export function MusicTrackManager() {
       await fetch("/api/collections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: COLLECTION_NAME, item: updatedTrack }),
+        body: JSON.stringify({ name: COLLECTION_NAME, items: updatedList }),
       });
       setStatusMsg(nextTop ? "Track added to Top Downloads ⭐" : "Track removed from Top Downloads");
     } catch {
@@ -389,14 +419,20 @@ export function MusicTrackManager() {
   const removeTrack = async (id: string) => {
     if (!confirm("Are you sure you want to delete this track?")) return;
 
-    setTracks((prev) => prev.filter((t) => t.id !== id));
+    const remaining = tracks.filter((t) => t.id !== id);
+    setTracks(remaining);
 
     try {
+      await fetch("/api/collections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: COLLECTION_NAME, items: remaining }),
+      });
       await fetch(`/api/collections?name=${COLLECTION_NAME}&id=${id}`, {
         method: "DELETE",
       });
     } catch (err) {
-      console.warn("Failed to delete track from MongoDB:", err);
+      console.warn("Failed to delete track from server:", err);
     }
   };
 

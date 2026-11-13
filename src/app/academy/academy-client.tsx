@@ -30,7 +30,7 @@ import { formatImageUrl } from "@/lib/media-utils";
 import { EnquiryButton } from "../enquiry-button";
 import { CourseEnrollmentModal } from "@/components/enrollment-modal";
 import { AcademySpotlight } from "@/components/academy-spotlight";
-import { useStored } from "@/lib/kryso-storage";
+import { useStored, readStored } from "@/lib/kryso-storage";
 
 const perks = [
   { icon: Award, title: "Experienced teachers", text: "Learn with working concert musicians who love to teach." },
@@ -76,42 +76,32 @@ export function AcademyClient() {
       })
       .catch(() => {});
 
-    // Fetch courses from MongoDB collection & auto-merge with local courses
+    // 1. Immediately reflect stored courses from localStorage
+    const localCoursesOnMount = readStored<Course[]>("admin-courses-v3", courses);
+    if (Array.isArray(localCoursesOnMount) && localCoursesOnMount.length > 0) {
+      setCourseList(localCoursesOnMount);
+    }
+
+    // 2. Fetch courses from collection & auto-merge with local courses
     fetch("/api/collections?name=academy_courses")
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.items)) {
           const remoteCourses = data.items as Course[];
+          const currentLocal = readStored<Course[]>("admin-courses-v3", courses);
+          const courseMap = new Map<string, Course>();
+          courses.forEach((c) => courseMap.set(c.id, c));
+          currentLocal.forEach((c) => courseMap.set(c.id, c));
+          remoteCourses.forEach((c) => courseMap.set(c.id, { ...courseMap.get(c.id), ...c }));
 
-          setCourseList((currentList) => {
-            const list = Array.isArray(currentList) ? currentList : [];
-            const remoteMap = new Map(remoteCourses.map((c) => [c.id, c]));
-            const mergedLocal = list.map((loc) => remoteMap.get(loc.id) || loc);
-            const localIds = new Set(list.map((c) => c.id));
-            const remoteOnly = remoteCourses.filter((c) => !localIds.has(c.id));
-            const combined = [...mergedLocal, ...remoteOnly];
-            return combined.length > 0 ? combined : courses;
-          });
+          const merged = Array.from(courseMap.values()).sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+          setCourseList(merged);
 
-          // Sync any locally added course that isn't on the server yet
-          let localCourses: Course[] = [];
-          try {
-            const stored =
-              localStorage.getItem("kryso:admin-courses-v3") ||
-              localStorage.getItem("admin-courses-v3");
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed)) localCourses = parsed;
-            }
-          } catch {}
-
-          const remoteIds = new Set(remoteCourses.map((c) => c.id));
-          const unsynced = localCourses.filter((c) => !remoteIds.has(c.id));
-          for (const unsyncedCourse of unsynced) {
+          if (currentLocal.length > remoteCourses.length) {
             fetch("/api/collections", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: "academy_courses", item: unsyncedCourse }),
+              body: JSON.stringify({ name: "academy_courses", items: merged }),
             }).catch(() => {});
           }
         }
