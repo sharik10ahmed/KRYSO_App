@@ -2,10 +2,74 @@ import { NextRequest, NextResponse } from "next/server";
 import { ObjectId, type Filter, type Document } from "mongodb";
 import { getDb } from "@/lib/mongodb";
 import { getCache, setCache, invalidateCollectionsCache } from "@/lib/redis";
+import {
+  courses,
+  defaultMusicTracks,
+  defaultMusicVideos,
+  defaultSpotlightSlides,
+  teachers,
+  defaultSyllabusModules,
+  defaultStudioGearItems,
+  testimonials,
+  gallery,
+  siteSettings,
+  defaultMusicHeaderData,
+  defaultKrysoPageImages,
+  defaultKrysoPageConfig,
+  defaultKrysoBiography,
+  defaultKrysoShowsData,
+  defaultKrysoDownloads,
+  defaultKrysoProducerData,
+  defaultKrysoTechriderData,
+} from "@/data/catalog";
+import { defaultAcademySpotlightImages } from "@/components/academy-spotlight";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+const DEFAULT_COLLECTIONS: Record<string, Array<Record<string, unknown>>> = {
+  academy_courses: courses as unknown as Array<Record<string, unknown>>,
+  music_tracks: defaultMusicTracks as unknown as Array<Record<string, unknown>>,
+  music_videos: defaultMusicVideos as unknown as Array<Record<string, unknown>>,
+  academy_spotlight_images: defaultAcademySpotlightImages as unknown as Array<Record<string, unknown>>,
+  spotlight_slides: defaultSpotlightSlides as unknown as Array<Record<string, unknown>>,
+  academy_teachers: teachers as unknown as Array<Record<string, unknown>>,
+  academy_curriculum: defaultSyllabusModules as unknown as Array<Record<string, unknown>>,
+  academy_studio_gear: defaultStudioGearItems as unknown as Array<Record<string, unknown>>,
+  academy_testimonials: testimonials as unknown as Array<Record<string, unknown>>,
+  academy_gallery: gallery as unknown as Array<Record<string, unknown>>,
+  site_settings: [siteSettings as unknown as Record<string, unknown>],
+  music_header: [defaultMusicHeaderData as unknown as Record<string, unknown>],
+  kryso_page_images: defaultKrysoPageImages as unknown as Array<Record<string, unknown>>,
+  kryso_page_config: [defaultKrysoPageConfig as unknown as Record<string, unknown>],
+  kryso_biography: [defaultKrysoBiography as unknown as Record<string, unknown>],
+  kryso_shows: defaultKrysoShowsData as unknown as Array<Record<string, unknown>>,
+  kryso_downloads: defaultKrysoDownloads as unknown as Array<Record<string, unknown>>,
+  kryso_producer: [defaultKrysoProducerData as unknown as Record<string, unknown>],
+  kryso_techrider: [defaultKrysoTechriderData as unknown as Record<string, unknown>],
+};
+
+interface GlobalFallback {
+  _krysoFallbackStore?: Record<string, Array<Record<string, unknown>>>;
+}
+const globalFallback = globalThis as unknown as GlobalFallback;
+if (!globalFallback._krysoFallbackStore) {
+  globalFallback._krysoFallbackStore = {};
+}
+const fallbackStore = globalFallback._krysoFallbackStore;
+
+function getFallbackItems(name: string): Array<Record<string, unknown>> {
+  if (fallbackStore[name] && Array.isArray(fallbackStore[name])) {
+    return fallbackStore[name];
+  }
+  const defaultItems = DEFAULT_COLLECTIONS[name];
+  if (defaultItems && Array.isArray(defaultItems)) {
+    fallbackStore[name] = defaultItems.map((item) => ({ ...item }));
+    return fallbackStore[name];
+  }
+  return [];
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -28,7 +92,7 @@ export async function GET(req: NextRequest) {
       items: Array<Record<string, unknown>>;
     }>(cacheKey);
 
-    if (cachedData && Array.isArray(cachedData.items)) {
+    if (cachedData && Array.isArray(cachedData.items) && cachedData.items.length > 0) {
       return NextResponse.json(
         {
           ...cachedData,
@@ -106,11 +170,28 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      let finalItems = sanitized;
+      // If MongoDB collection is empty, seed it with default catalog data
+      if (finalItems.length === 0) {
+        const fallbacks = getFallbackItems(name);
+        if (fallbacks.length > 0) {
+          finalItems = fallbacks;
+          try {
+            const docs = fallbacks.map((it, idx) => ({
+              ...it,
+              order: it.order ?? idx,
+              updatedAt: new Date(),
+            }));
+            await db.collection(name).insertMany(docs);
+          } catch {}
+        }
+      }
+
       const responsePayload = {
         success: true,
         source: "mongodb",
         collection: name,
-        items: sanitized,
+        items: finalItems,
       };
 
       // 3. Cache in Redis (TTL: 1 hour)
@@ -127,12 +208,14 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Fallback when MongoDB is offline / restricted / unconfigured
+    const fallbackItems = getFallbackItems(name);
     return NextResponse.json(
       {
         success: true,
         source: "fallback",
         collection: name,
-        items: [],
+        items: fallbackItems,
         message: "Database not connected. Operating in local storage mode.",
       },
       {
@@ -163,6 +246,20 @@ export async function POST(req: NextRequest) {
         { error: "Collection name 'name' is required." },
         { status: 400 }
       );
+    }
+
+    // Always update in-memory fallback store so server immediately reflects the changes
+    if (Array.isArray(items)) {
+      fallbackStore[name] = items.map((it) => ({ ...it }));
+    } else if (item && item.id) {
+      const current = [...getFallbackItems(name)];
+      const existsIdx = current.findIndex((it) => String(it.id) === String(item.id));
+      if (existsIdx >= 0) {
+        current[existsIdx] = { ...current[existsIdx], ...item };
+      } else {
+        current.unshift({ ...item });
+      }
+      fallbackStore[name] = current;
     }
 
     const db = await getDb();
@@ -219,7 +316,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       savedTo: "local-state",
-      message: "Database unavailable, cached in browser local storage.",
+      item: item || (items ? items[0] : undefined),
+      message: "Database unavailable, cached in server memory & browser local storage.",
     });
   } catch (err) {
     console.error("POST collection API error:", err);
@@ -240,6 +338,19 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json(
         { error: "Collection name 'name' is required." },
         { status: 400 }
+      );
+    }
+
+    // Always update in-memory fallback store
+    if (id === "ALL") {
+      fallbackStore[name] = [];
+    } else if (id) {
+      const current = getFallbackItems(name);
+      fallbackStore[name] = current.filter(
+        (it) =>
+          String(it.id) !== String(id) &&
+          String(it.invoiceNumber) !== String(id) &&
+          String(it.paymentId) !== String(id)
       );
     }
 
@@ -299,6 +410,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({
       success: true,
       savedTo: "local-state",
+      deletedId: id,
+      collection: name,
     });
   } catch (err) {
     console.error("DELETE collection API error:", err);

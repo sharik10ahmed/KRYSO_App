@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SiteShell, SectionHeading } from "@/components/kryso-site";
-import { siteSettings, type Course } from "@/data/catalog";
+import { siteSettings, courses, testimonials, gallery, type Course } from "@/data/catalog";
 import { formatImageUrl } from "@/lib/media-utils";
 import { EnquiryButton } from "../enquiry-button";
 import { CourseEnrollmentModal } from "@/components/enrollment-modal";
@@ -43,13 +43,26 @@ const perks = [
 
 export function AcademyClient() {
   const [settings, setSettings] = useStored("admin-settings", siteSettings);
-  const [courseList, setCourseList] = useState<Course[]>([]);
+  const [courseList, setCourseList] = useState<Course[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored =
+          localStorage.getItem("kryso:admin-courses-v3") ||
+          localStorage.getItem("admin-courses-v3");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return courses;
+  });
   const [detailCourse, setDetailCourse] = useState<Course | null>(null);
   const [enrollModalCourse, setEnrollModalCourse] = useState<Course | null>(null);
-  const [testimonialList, setTestimonialList] = useState<{ name: string; course: string; text: string }[]>([]);
-  const [galleryList, setGalleryList] = useState<{ id: string; imageUrl?: string; caption?: string }[]>([]);
+  const [testimonialList, setTestimonialList] = useState<{ name: string; course: string; text: string }[]>(testimonials);
+  const [galleryList, setGalleryList] = useState<{ id: string; imageUrl?: string; caption?: string }[]>(gallery);
   const [review, setReview] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Search & Filter & Pagination states
   const [searchQuery, setSearchQuery] = useState("");
@@ -77,26 +90,34 @@ export function AcademyClient() {
     fetch("/api/collections?name=academy_courses")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.items)) {
+        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
           setCourseList(data.items);
         } else {
           try {
-            const stored = localStorage.getItem("kryso:admin-courses-v3") || localStorage.getItem("admin-courses-v3");
+            const stored =
+              localStorage.getItem("kryso:admin-courses-v3") ||
+              localStorage.getItem("admin-courses-v3");
             if (stored) {
               const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed)) setCourseList(parsed);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setCourseList(parsed);
+                return;
+              }
             }
           } catch {}
+          setCourseList((prev) => (prev.length > 0 ? prev : courses));
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        setCourseList((prev) => (prev.length > 0 ? prev : courses));
+      })
       .finally(() => setLoading(false));
 
     // Fetch testimonials
     fetch("/api/collections?name=academy_testimonials")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.items)) {
+        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
           setTestimonialList(data.items);
         }
       })
@@ -106,7 +127,7 @@ export function AcademyClient() {
     fetch("/api/collections?name=academy_gallery")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.items)) {
+        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
           setGalleryList(data.items);
         }
       })

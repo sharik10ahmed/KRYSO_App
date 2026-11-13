@@ -42,6 +42,8 @@ import {
   type Teacher,
   type SyllabusModule,
   type StudioGearItem,
+  courses as defaultCourses,
+  teachers as defaultTeachers,
   defaultSyllabusModules,
   defaultStudioGearItems,
 } from "@/data/catalog";
@@ -72,11 +74,24 @@ const studioIcons: Record<string, React.ComponentType<{ size?: number; className
 };
 
 export function CourseDetailClient({ courseId }: CourseDetailClientProps) {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [curriculumList, setCurriculumList] = useState<SyllabusModule[]>([]);
-  const [studioGearList, setStudioGearList] = useState<StudioGearItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored =
+          localStorage.getItem("kryso:admin-courses-v3") ||
+          localStorage.getItem("admin-courses-v3");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return defaultCourses;
+  });
+  const [teachers, setTeachers] = useState<Teacher[]>(defaultTeachers);
+  const [curriculumList, setCurriculumList] = useState<SyllabusModule[]>(defaultSyllabusModules);
+  const [studioGearList, setStudioGearList] = useState<StudioGearItem[]>(defaultStudioGearItems);
+  const [loading, setLoading] = useState(false);
   const [enrollModalCourse, setEnrollModalCourse] = useState<Course | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [activeFaq, setActiveFaq] = useState<number | null>(0);
@@ -129,12 +144,18 @@ export function CourseDetailClient({ courseId }: CourseDetailClientProps) {
               localStorage.getItem("admin-courses-v3");
             if (stored) {
               const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed)) setCourses(sortList(parsed));
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setCourses(sortList(parsed));
+                return;
+              }
             }
           } catch {}
+          setCourses(sortList(defaultCourses));
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setCourses((prev) => (prev.length > 0 ? prev : sortList(defaultCourses)));
+      });
 
     // 2. Fetch teachers
     const loadTeachers = fetch("/api/collections?name=academy_teachers")
@@ -149,12 +170,18 @@ export function CourseDetailClient({ courseId }: CourseDetailClientProps) {
               localStorage.getItem("admin-teachers-v3");
             if (stored) {
               const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed)) setTeachers(parsed);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setTeachers(parsed);
+                return;
+              }
             }
           } catch {}
+          setTeachers((prev) => (prev.length > 0 ? prev : defaultTeachers));
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setTeachers((prev) => (prev.length > 0 ? prev : defaultTeachers));
+      });
 
     // 3. Fetch curriculum / syllabus
     const loadCurriculum = fetch("/api/collections?name=academy_curriculum")
@@ -164,15 +191,23 @@ export function CourseDetailClient({ courseId }: CourseDetailClientProps) {
           setCurriculumList(data.items);
         } else {
           try {
-            const stored = localStorage.getItem("admin-curriculum-v3");
+            const stored =
+              localStorage.getItem("kryso:admin-curriculum-v3") ||
+              localStorage.getItem("admin-curriculum-v3");
             if (stored) {
               const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed)) setCurriculumList(parsed);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setCurriculumList(parsed);
+                return;
+              }
             }
           } catch {}
+          setCurriculumList((prev) => (prev.length > 0 ? prev : defaultSyllabusModules));
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setCurriculumList((prev) => (prev.length > 0 ? prev : defaultSyllabusModules));
+      });
 
     // 4. Fetch studio gear & campus
     const loadStudioGear = fetch("/api/collections?name=academy_studio_gear")
@@ -182,15 +217,23 @@ export function CourseDetailClient({ courseId }: CourseDetailClientProps) {
           setStudioGearList(data.items);
         } else {
           try {
-            const stored = localStorage.getItem("admin-studio-gear-v3");
+            const stored =
+              localStorage.getItem("kryso:admin-studio-gear-v3") ||
+              localStorage.getItem("admin-studio-gear-v3");
             if (stored) {
               const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed)) setStudioGearList(parsed);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setStudioGearList(parsed);
+                return;
+              }
             }
           } catch {}
+          setStudioGearList((prev) => (prev.length > 0 ? prev : defaultStudioGearItems));
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setStudioGearList((prev) => (prev.length > 0 ? prev : defaultStudioGearItems));
+      });
 
     Promise.all([loadCourses, loadTeachers, loadCurriculum, loadStudioGear]).finally(() => {
       setLoading(false);

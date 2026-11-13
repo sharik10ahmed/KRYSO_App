@@ -37,6 +37,7 @@ import { SiteShell, SectionHeading } from "@/components/kryso-site";
 import {
   siteSettings,
   defaultMusicHeaderData,
+  defaultMusicTracks,
   type MusicTrack,
   type TrackAccessType,
   getTrackAccessType,
@@ -371,7 +372,20 @@ export function MusicShopClient() {
     "admin-kryso-music-header",
     defaultMusicHeaderData
   );
-  const [trackList, setTrackList] = useState<MusicTrack[]>([]);
+  const [trackList, setTrackList] = useState<MusicTrack[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored =
+          localStorage.getItem("kryso:admin-music-tracks-v1") ||
+          localStorage.getItem("admin-music-tracks-v1");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return defaultMusicTracks;
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [activeQuery, setActiveQuery] = useState("");
   const [selectedGenre, setSelectedGenre] = useState("All");
@@ -582,15 +596,23 @@ export function MusicShopClient() {
           setTrackList(sorted);
         } else {
           try {
-            const stored = localStorage.getItem("admin-music-tracks-v1");
+            const stored =
+              localStorage.getItem("kryso:admin-music-tracks-v1") ||
+              localStorage.getItem("admin-music-tracks-v1");
             if (stored) {
               const parsed = JSON.parse(stored);
-              if (Array.isArray(parsed)) setTrackList(parsed);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setTrackList(parsed);
+                return;
+              }
             }
           } catch {}
+          setTrackList((prev) => (prev.length > 0 ? prev : defaultMusicTracks));
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        setTrackList((prev) => (prev.length > 0 ? prev : defaultMusicTracks));
+      });
   }, []);
 
   // Extract unique genres from available tracks

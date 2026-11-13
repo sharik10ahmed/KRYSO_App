@@ -40,7 +40,7 @@ import heroImage from "@/assets/kryso-hero.jpg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { CollectionManager } from "@/components/admin-collection";
+import { CollectionManager, type Row } from "@/components/admin-collection";
 import {
   ADMIN_SESSION_KEY,
   ENQUIRIES_KEY,
@@ -51,7 +51,7 @@ import {
   useStored,
   writeStored,
 } from "@/lib/kryso-storage";
-import { siteSettings, teachers, defaultSyllabusModules, defaultStudioGearItems } from "@/data/catalog";
+import { siteSettings, courses, teachers, defaultSyllabusModules, defaultStudioGearItems } from "@/data/catalog";
 import { SpotlightManager } from "@/components/admin-spotlight";
 import { MusicTrackManager } from "@/components/admin-music-tracks";
 import { SpotifyIcon } from "@/components/spotify-icon";
@@ -478,7 +478,7 @@ function AcademySection() {
           folder="kryso/academy"
           previewUrlPrefix="/academy"
           publicPageUrl="/academy"
-          seed={[]}
+          seed={courses as unknown as Row[]}
           fields={[
             {
               key: "order",

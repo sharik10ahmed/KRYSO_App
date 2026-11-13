@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SiteShell, SectionHeading } from "@/components/kryso-site";
 import { saveEnquiry, useStored } from "@/lib/kryso-storage";
-import { siteSettings } from "@/data/catalog";
+import { siteSettings, courses as defaultCourses } from "@/data/catalog";
 
 const INQUIRY_TYPES = [
   "General Inquiry",
@@ -27,10 +27,12 @@ export function ContactClient() {
   const [courses, setCourses] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       try {
-        const stored = localStorage.getItem("admin-courses-v3");
+        const stored =
+          localStorage.getItem("kryso:admin-courses-v3") ||
+          localStorage.getItem("admin-courses-v3");
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             return parsed
               .map((c: { name?: string }) => c.name?.trim())
               .filter((n: string | undefined): n is string => Boolean(n));
@@ -38,7 +40,7 @@ export function ContactClient() {
         }
       } catch {}
     }
-    return [];
+    return defaultCourses.map((c) => c.name);
   });
   const [selectedCourse, setSelectedCourse] = useState("");
 

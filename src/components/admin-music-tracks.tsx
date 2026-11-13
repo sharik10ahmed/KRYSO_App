@@ -51,6 +51,7 @@ import { useStored } from "@/lib/kryso-storage";
 import {
   siteSettings,
   defaultMusicHeaderData,
+  defaultMusicTracks,
   type MusicTrack,
   type TrackAccessType,
   getTrackAccessType,
@@ -67,7 +68,7 @@ const STORAGE_KEY = "admin-music-tracks-v1";
 const COLLECTION_NAME = "music_tracks";
 
 export function MusicTrackManager() {
-  const [tracks, setTracks] = useStored<MusicTrack[]>(STORAGE_KEY, []);
+  const [tracks, setTracks] = useStored<MusicTrack[]>(STORAGE_KEY, defaultMusicTracks);
   const [headerConfig, setHeaderConfig] = useStored<MusicHeaderData>("admin-kryso-music-header", defaultMusicHeaderData);
   const [headerUploading, setHeaderUploading] = useState(false);
   const [headerSaved, setHeaderSaved] = useState(false);
